@@ -30,7 +30,8 @@ fn poll(api_url: &str) -> reqwest::Result<()> {
 
 fn main() {
     // Try to load .env file
-    if cfg!(debug_assertions) {
+    #[cfg(feature = "dotenv")]
+    {
         if let Some(e) = dotenv::dotenv().err() {
             eprintln!("Cannot load .env file: {}", e);
         }
