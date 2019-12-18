@@ -39,9 +39,16 @@ fn main() {
 
     let var_token = env::var("API_TOKEN");
 
-    let matches = App::new("Telegram bot")
+    let cmd_options = App::new("Telegram bot")
         .version(clap::crate_version!())
         .about("Collects message metadata")
+        .arg(
+            Arg::with_name("verbose")
+                .short("v")
+                .long("verbose")
+                .multiple(true)
+                .help("Prints debugging information (pass twice for trace)"),
+        )
         .arg(
             Arg::with_name("token")
                 .help("Telegram Bot API token to use (if API_TOKEN envvar is not set)")
@@ -49,13 +56,18 @@ fn main() {
         )
         .get_matches();
 
-    let token = matches
+    let token = cmd_options
         .value_of("token")
         .map(|m| m.to_string())
         .unwrap_or(var_token.unwrap());
     let api_url = format!("https://telegram.org/bot{}", token);
 
-    simple_logger::init().expect("Logger failed to initialize");
+    simple_logger::init_with_level(match cmd_options.occurrences_of("verbose") {
+        0 => log::Level::Info,
+        1 => log::Level::Debug,
+        _ => log::Level::Trace,
+    })
+    .expect("Logger failed to initialize");
     log::info!("Starting version {}", clap::crate_version!());
 
     poll(&api_url).unwrap();
