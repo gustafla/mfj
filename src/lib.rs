@@ -1,16 +1,12 @@
-mod metadata_store;
+pub mod metadata_store;
 
 //use chrono::prelude::*;
 use metadata_store::{Message, MetadataStore};
 use serde_json::json;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-lazy_static! {
-    static ref METADATA_STORE: Mutex<MetadataStore> = Mutex::new(Default::default());
-}
-
-fn process_updates(updates: &[serde_json::Value]) {
+fn process_updates(updates: &[serde_json::Value], metadata_store: &mut MetadataStore) {
     for update in updates {
         log::trace!("{}", update);
 
@@ -19,15 +15,18 @@ fn process_updates(updates: &[serde_json::Value]) {
             let user_id = message["from"]["id"].as_i64().unwrap();
             let timestamp = message["date"].as_u64().unwrap();
 
-            METADATA_STORE
-                .lock()
-                .unwrap()
-                .add_message(chat_id, Message { user_id, timestamp });
+            metadata_store.add_message(chat_id, Message { user_id, timestamp });
         }
     }
 }
 
-pub fn poll(api_url: &str, reqwest_client: reqwest::Client, timeout_secs: u64) -> reqwest::Result<()> {
+pub fn poll(
+    running: Arc<AtomicBool>,
+    api_url: &str,
+    reqwest_client: reqwest::Client,
+    timeout_secs: u64,
+    mut metadata_store: &mut MetadataStore,
+) -> reqwest::Result<()> {
     use reqwest::StatusCode;
 
     let api_url_get_updates = format!("{}/getUpdates", api_url);
@@ -36,7 +35,7 @@ pub fn poll(api_url: &str, reqwest_client: reqwest::Client, timeout_secs: u64) -
 
     log::info!("Starting polling, timeout {}s", timeout_secs);
 
-    loop {
+    while running.load(Ordering::SeqCst) {
         let mut response = reqwest_client
             .get(&api_url_get_updates)
             .json(&params_get_updates)
@@ -60,7 +59,7 @@ pub fn poll(api_url: &str, reqwest_client: reqwest::Client, timeout_secs: u64) -
                     params_get_updates["offset"] = json!(next_id + 1);
                 }
 
-                process_updates(updates);
+                process_updates(updates, &mut metadata_store);
             }
             _ => println!(
                 "Server returned {}.\n{}",
@@ -69,4 +68,6 @@ pub fn poll(api_url: &str, reqwest_client: reqwest::Client, timeout_secs: u64) -
             ),
         }
     }
+
+    Ok(())
 }

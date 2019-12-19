@@ -1,6 +1,9 @@
 use clap::{self, App, Arg};
 use log;
+use mfj::metadata_store::MetadataStore;
 use simple_logger;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::{env, time::Duration};
 
 fn main() {
@@ -39,6 +42,15 @@ fn main() {
                 )
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("metadata_store_path")
+                .long("metadata-store-path")
+                .help(
+                    "Sets the file path where metadata storage is written\n\
+                     (default ./messages.json)",
+                )
+                .takes_value(true),
+        )
         .get_matches();
 
     let token = cmd_options
@@ -55,6 +67,10 @@ fn main() {
                 .as_secs()
         })
         .unwrap_or(60); // 60s if -t / --poll-timeout is not provided
+
+    let metadata_store_path = cmd_options
+        .value_of("metadata_store_path")
+        .unwrap_or("./messages.json");
 
     let reqwest_client = reqwest::Client::builder()
         .timeout(Duration::new(
@@ -73,6 +89,25 @@ fn main() {
     .expect("Logger failed to initialize");
     log::info!("Starting version {}", clap::crate_version!());
 
-    mfj::poll(&api_url, reqwest_client, timeout_secs).unwrap();
+    let mut metadata_store = MetadataStore::new(metadata_store_path).unwrap();
+    // TODO error handling goes here
+
+    let running = Arc::new(AtomicBool::new(true));
+
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        log::info!("Waiting for requests to finish...");
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Failed to set ctrl-c handler");
+
+    mfj::poll(
+        running,
+        &api_url,
+        reqwest_client,
+        timeout_secs,
+        &mut metadata_store,
+    )
+    .unwrap();
     // TODO error handling goes here
 }
