@@ -1,12 +1,33 @@
+mod metadata_store;
+
+//use chrono::prelude::*;
 use clap::{self, App, Arg};
+use lazy_static::lazy_static;
 use log;
+use metadata_store::{Message, MetadataStore};
 use serde_json::json;
 use simple_logger;
+use std::sync::Mutex;
 use std::{env, time::Duration};
+
+lazy_static! {
+    static ref METADATA_STORE: Mutex<MetadataStore> = Mutex::new(Default::default());
+}
 
 fn process_updates(updates: &[serde_json::Value]) {
     for update in updates {
         log::trace!("{}", update);
+
+        if let Some(message) = update.get("message") {
+            let chat_id = message["chat"]["id"].as_i64().unwrap();
+            let user_id = message["from"]["id"].as_i64().unwrap();
+            let timestamp = message["date"].as_u64().unwrap();
+
+            METADATA_STORE
+                .lock()
+                .unwrap()
+                .add_message(chat_id, Message { user_id, timestamp });
+        }
     }
 }
 
