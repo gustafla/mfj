@@ -43,6 +43,13 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("write_interval")
+                .short("w")
+                .long("write-interval")
+                .help("Sets the interval for writing metadata storage (default 30min)")
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("metadata_store_path")
                 .long("metadata-store-path")
                 .help(
@@ -68,6 +75,11 @@ fn main() {
         })
         .unwrap_or(60); // 60s if -t / --poll-timeout is not provided
 
+    let write_interval = cmd_options
+        .value_of("write_interval")
+        .map(|s| humantime::parse_duration(s).expect(&format!("Failed to parse {}", s)))
+        .unwrap_or(Duration::new(60 * 30, 0)); // 30m if -w / --write-interval is not provided
+
     let metadata_store_path = cmd_options
         .value_of("metadata_store_path")
         .unwrap_or("./messages.json");
@@ -75,7 +87,11 @@ fn main() {
     let reqwest_client = reqwest::Client::builder()
         .timeout(Duration::new(
             // 0s timeout means short polling, set 60s timeout for that
-            if timeout_secs == 0 { 60 } else { timeout_secs },
+            if timeout_secs == 0 {
+                60
+            } else {
+                timeout_secs * 2
+            },
             0,
         ))
         .build()
@@ -89,7 +105,7 @@ fn main() {
     .expect("Logger failed to initialize");
     log::info!("Starting version {}", clap::crate_version!());
 
-    let mut metadata_store = MetadataStore::new(metadata_store_path).unwrap();
+    let mut metadata_store = MetadataStore::new(metadata_store_path, write_interval).unwrap();
     // TODO error handling goes here
 
     let running = Arc::new(AtomicBool::new(true));

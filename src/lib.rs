@@ -6,7 +6,10 @@ use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-fn process_updates(updates: &[serde_json::Value], metadata_store: &mut MetadataStore) {
+fn process_updates(
+    updates: &[serde_json::Value],
+    metadata_store: &mut MetadataStore,
+) -> Result<(), metadata_store::Error> {
     for update in updates {
         log::trace!("{}", update);
 
@@ -15,9 +18,10 @@ fn process_updates(updates: &[serde_json::Value], metadata_store: &mut MetadataS
             let user_id = message["from"]["id"].as_i64().unwrap();
             let timestamp = message["date"].as_u64().unwrap();
 
-            metadata_store.add_message(chat_id, Message { user_id, timestamp });
+            metadata_store.add_message(chat_id, Message { user_id, timestamp })?;
         }
     }
+    Ok(())
 }
 
 pub fn poll(
@@ -59,7 +63,8 @@ pub fn poll(
                     params_get_updates["offset"] = json!(next_id + 1);
                 }
 
-                process_updates(updates, &mut metadata_store);
+                process_updates(updates, &mut metadata_store).unwrap();
+                // TODO Error handling goes here
             }
             _ => println!(
                 "Server returned {}.\n{}",

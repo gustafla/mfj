@@ -4,6 +4,7 @@ use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
+    time::{Duration, Instant},
 };
 
 #[derive(Debug)]
@@ -37,10 +38,18 @@ struct MessagesByChat(HashMap<i64, Vec<Message>>);
 pub struct MetadataStore {
     messages_by_chat: MessagesByChat,
     file: File,
+    last_written: Instant,
+    write_interval: Duration,
 }
 
 impl MetadataStore {
-    pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, Error> {
+    pub fn new<P: AsRef<Path>>(file_path: P, write_interval: Duration) -> Result<Self, Error> {
+        log::info!(
+            "Initializing metadata storage, path: {}, write interval: {}",
+            file_path.as_ref().to_string_lossy(),
+            humantime::format_duration(write_interval)
+        );
+
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -60,15 +69,24 @@ impl MetadataStore {
                 })
             },
             file,
+            last_written: Instant::now(),
+            write_interval,
         })
     }
 
-    pub fn add_message(&mut self, chat_id: i64, message: Message) {
+    pub fn add_message(&mut self, chat_id: i64, message: Message) -> Result<(), Error> {
         let messages = self.messages_by_chat.0.entry(chat_id).or_insert(Vec::new());
         messages.push(message);
+
+        if self.last_written.elapsed() > self.write_interval {
+            self.sync_file()?;
+            self.last_written = Instant::now();
+        }
+        Ok(())
     }
 
-    pub fn sync_file(&mut self) -> Result<(), Error> {
+    fn sync_file(&mut self) -> Result<(), Error> {
+        log::info!("Writing to disk");
         let json = serde_json::to_string(&self.messages_by_chat.0)?;
         self.file.seek(SeekFrom::Start(0))?;
         self.file.set_len(0)?;
