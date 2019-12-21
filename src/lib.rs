@@ -40,10 +40,22 @@ pub fn poll(
     log::info!("Starting polling, timeout {}s", timeout_secs);
 
     while running.load(Ordering::SeqCst) {
-        let mut response = reqwest_client
+        log::trace!("Sending a new update request");
+        let mut response = match reqwest_client
             .get(&api_url_get_updates)
             .json(&params_get_updates)
-            .send()?;
+            .send()
+        {
+            Ok(response) => response,
+            Err(e) => {
+                if e.is_timeout() { // Ignore timeouts
+                    log::info!("Update request timed out");
+                    continue;
+                } else { // Don't ignore other errors
+                    return Err(e);
+                }
+            }
+        };
 
         match response.status() {
             StatusCode::OK => {
