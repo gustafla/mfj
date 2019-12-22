@@ -109,11 +109,17 @@ fn main() {
     // TODO error handling goes here
 
     let running = Arc::new(AtomicBool::new(true));
-
+    let twice = Arc::new(AtomicBool::new(false));
     let r = running.clone();
     ctrlc::set_handler(move || {
-        log::info!("Waiting for requests to finish...");
-        r.store(false, Ordering::SeqCst);
+        if twice.load(Ordering::SeqCst) {
+            std::process::exit(1);
+        } else {
+            log::info!("Interrupt signal received, waiting for requests to finish");
+            log::warn!("Press twice to force quit and lose recent data");
+            r.store(false, Ordering::SeqCst);
+            twice.store(true, Ordering::SeqCst);
+        }
     })
     .expect("Failed to set ctrl-c handler");
 
