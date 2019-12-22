@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Seek, SeekFrom},
     path::Path,
     time::{Duration, Instant},
 };
@@ -52,7 +52,7 @@ impl MetadataStore {
             humantime::format_duration(write_interval)
         );
 
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -60,12 +60,11 @@ impl MetadataStore {
 
         Ok(MetadataStore {
             timestamps_by_chat_user: {
-                let mut json = String::new();
-                file.read_to_string(&mut json)?;
-                serde_json::from_str(&json).unwrap_or({
+                serde_json::from_reader(&file).unwrap_or_else(|e| {
                     log::info!(
-                        "Failed to load {}, initializing new",
-                        file_path.as_ref().to_string_lossy()
+                        "Failed to load {}, initializing new ({})",
+                        file_path.as_ref().to_string_lossy(),
+                        e
                     );
                     Default::default()
                 })
@@ -77,7 +76,11 @@ impl MetadataStore {
     }
 
     pub fn add_message(&mut self, chat_id: i64, message: Message) -> Result<(), Error> {
-        let chat_users = self.timestamps_by_chat_user.0.entry(chat_id).or_insert(HashMap::new());
+        let chat_users = self
+            .timestamps_by_chat_user
+            .0
+            .entry(chat_id)
+            .or_insert(HashMap::new());
         let timestamps = chat_users.entry(message.user_id).or_insert(Vec::new());
         timestamps.push(message.timestamp);
 
@@ -90,10 +93,9 @@ impl MetadataStore {
 
     fn sync_file(&mut self) -> Result<(), Error> {
         log::info!("Writing to disk");
-        let json = serde_json::to_string(&self.timestamps_by_chat_user.0)?;
         self.file.seek(SeekFrom::Start(0))?;
         self.file.set_len(0)?;
-        self.file.write_all(json.as_bytes())?;
+        serde_json::to_writer(&self.file, &self.timestamps_by_chat_user.0)?;
         Ok(())
     }
 }
