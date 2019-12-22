@@ -25,18 +25,20 @@ impl From<std::io::Error> for Error {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Message {
     pub user_id: i64,
     pub timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct MessagesByChat(HashMap<i64, Vec<Message>>);
+struct TimestampsByChatUser(
+    HashMap</* chat_id */ i64, HashMap</* user_id */ i64, Vec</* timestamp */ u64>>>,
+);
 
 #[derive(Debug)]
 pub struct MetadataStore {
-    messages_by_chat: MessagesByChat,
+    timestamps_by_chat_user: TimestampsByChatUser,
     file: File,
     last_written: Instant,
     write_interval: Duration,
@@ -57,7 +59,7 @@ impl MetadataStore {
             .open(&file_path)?;
 
         Ok(MetadataStore {
-            messages_by_chat: {
+            timestamps_by_chat_user: {
                 let mut json = String::new();
                 file.read_to_string(&mut json)?;
                 serde_json::from_str(&json).unwrap_or({
@@ -75,8 +77,9 @@ impl MetadataStore {
     }
 
     pub fn add_message(&mut self, chat_id: i64, message: Message) -> Result<(), Error> {
-        let messages = self.messages_by_chat.0.entry(chat_id).or_insert(Vec::new());
-        messages.push(message);
+        let chat_users = self.timestamps_by_chat_user.0.entry(chat_id).or_insert(HashMap::new());
+        let timestamps = chat_users.entry(message.user_id).or_insert(Vec::new());
+        timestamps.push(message.timestamp);
 
         if self.last_written.elapsed() > self.write_interval {
             self.sync_file()?;
@@ -87,7 +90,7 @@ impl MetadataStore {
 
     fn sync_file(&mut self) -> Result<(), Error> {
         log::info!("Writing to disk");
-        let json = serde_json::to_string(&self.messages_by_chat.0)?;
+        let json = serde_json::to_string(&self.timestamps_by_chat_user.0)?;
         self.file.seek(SeekFrom::Start(0))?;
         self.file.set_len(0)?;
         self.file.write_all(json.as_bytes())?;
