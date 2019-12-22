@@ -1,3 +1,4 @@
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -60,7 +61,7 @@ impl MetadataStore {
 
         Ok(MetadataStore {
             timestamps_by_chat_user: {
-                serde_json::from_reader(&file).unwrap_or_else(|e| {
+                serde_json::from_reader(GzDecoder::new(&file)).unwrap_or_else(|e| {
                     log::info!(
                         "Failed to load {}, initializing new ({})",
                         file_path.as_ref().to_string_lossy(),
@@ -95,7 +96,10 @@ impl MetadataStore {
         log::info!("Writing to disk");
         self.file.seek(SeekFrom::Start(0))?;
         self.file.set_len(0)?;
-        serde_json::to_writer(&self.file, &self.timestamps_by_chat_user.0)?;
+        serde_json::to_writer(
+            GzEncoder::new(&self.file, Compression::default()),
+            &self.timestamps_by_chat_user.0,
+        )?;
         Ok(())
     }
 }

@@ -54,7 +54,7 @@ fn main() {
                 .long("metadata-store-path")
                 .help(
                     "Sets the file path where metadata storage is written\n\
-                     (default ./messages.json)",
+                     (default ./messages.json.gz)",
                 )
                 .takes_value(true),
         )
@@ -82,7 +82,7 @@ fn main() {
 
     let metadata_store_path = cmd_options
         .value_of("metadata_store_path")
-        .unwrap_or("./messages.json");
+        .unwrap_or("./messages.json.gz");
 
     let reqwest_client = reqwest::Client::builder()
         .timeout(Duration::new(
