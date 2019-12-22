@@ -39,6 +39,7 @@ pub fn poll(
 
     log::info!("Starting polling, timeout {}s", timeout_secs);
 
+    let mut error_count = 0;
     while running.load(Ordering::SeqCst) {
         log::trace!("Sending a new update request");
         let mut response = match reqwest_client
@@ -48,14 +49,17 @@ pub fn poll(
         {
             Ok(response) => response,
             Err(e) => {
-                if e.is_timeout() { // Ignore timeouts
-                    log::info!("Update request timed out");
-                    continue;
-                } else { // Don't ignore other errors
+                log::info!("Update request error: {}", e);
+                error_count += 1;
+                if error_count > 32 {
+                    log::error!("Too many consecutive errors, aborting");
                     return Err(e);
                 }
+                continue;
             }
         };
+
+        error_count = 0;
 
         match response.status() {
             StatusCode::OK => {
