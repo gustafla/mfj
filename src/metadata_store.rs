@@ -92,6 +92,17 @@ impl MetadataStore {
         Ok(())
     }
 
+    pub fn get_chat_message_counts_by_user(&self, chat_id: i64) -> Vec<(i64, usize)> {
+        let mut result = Vec::new();
+        if let Some(user_timestamps) = self.timestamps_by_chat_user.0.get(&chat_id) {
+            for (user, timestamps) in user_timestamps {
+                result.push((*user, timestamps.len()));
+            }
+        }
+        result.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        result
+    }
+
     fn sync_file(&mut self) -> Result<(), Error> {
         log::info!("Writing to disk");
         self.file.seek(SeekFrom::Start(0))?;

@@ -105,7 +105,7 @@ fn main() {
     .expect("Logger failed to initialize");
     log::info!("Starting version {}", clap::crate_version!());
 
-    let mut metadata_store = MetadataStore::new(metadata_store_path, write_interval).unwrap();
+    let metadata_store = MetadataStore::new(metadata_store_path, write_interval).unwrap();
     // TODO error handling goes here
 
     let running = Arc::new(AtomicBool::new(true));
@@ -123,13 +123,8 @@ fn main() {
     })
     .expect("Failed to set ctrl-c handler");
 
-    mfj::poll(
-        running,
-        &api_url,
-        reqwest_client,
-        timeout_secs,
-        &mut metadata_store,
-    )
-    .unwrap();
+    mfj::StatsBot::new(&api_url, reqwest_client, metadata_store)
+        .poll(running, timeout_secs)
+        .unwrap();
     // TODO error handling goes here
 }

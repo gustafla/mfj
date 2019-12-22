@@ -3,92 +3,170 @@ pub mod metadata_store;
 //use chrono::prelude::*;
 use metadata_store::{Message, MetadataStore};
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-fn process_updates(
-    updates: &[serde_json::Value],
-    metadata_store: &mut MetadataStore,
-) -> Result<(), metadata_store::Error> {
-    for update in updates {
-        log::trace!("{}", update);
-
-        if let Some(message) = update.get("message") {
-            let chat_id = message["chat"]["id"].as_i64().unwrap();
-            let user_id = message["from"]["id"].as_i64().unwrap();
-            let timestamp = message["date"].as_u64().unwrap();
-
-            metadata_store.add_message(chat_id, Message { user_id, timestamp })?;
-        }
-    }
-    Ok(())
+pub struct StatsBot {
+    api_url_get_updates: String,
+    api_url_send_message: String,
+    reqwest_client: reqwest::Client,
+    metadata_store: MetadataStore,
+    user_names: HashMap<i64, String>,
 }
 
-pub fn poll(
-    running: Arc<AtomicBool>,
-    api_url: &str,
-    reqwest_client: reqwest::Client,
-    timeout_secs: u64,
-    mut metadata_store: &mut MetadataStore,
-) -> reqwest::Result<()> {
-    use reqwest::StatusCode;
-
-    let api_url_get_updates = format!("{}/getUpdates", api_url);
-
-    let mut params_get_updates = json!({ "timeout": timeout_secs });
-
-    log::info!("Starting polling, timeout {}s", timeout_secs);
-
-    let mut error_count = 0;
-    while running.load(Ordering::SeqCst) {
-        log::trace!("Sending a new update request");
-        let mut response = match reqwest_client
-            .get(&api_url_get_updates)
-            .json(&params_get_updates)
-            .send()
-        {
-            Ok(response) => response,
-            Err(e) => {
-                log::info!("Update request error: {}", e);
-                error_count += 1;
-                if error_count > 32 {
-                    log::error!("Too many consecutive errors, aborting");
-                    return Err(e);
-                }
-                continue;
-            }
-        };
-
-        error_count = 0;
-
-        match response.status() {
-            StatusCode::OK => {
-                let updates: serde_json::Value = response.json()?;
-                if !updates["ok"].as_bool().unwrap() {
-                    panic!("Telegram getUpdates returned ok: false");
-                }
-
-                let updates: &Vec<serde_json::Value> = updates["result"].as_array().unwrap();
-
-                if let Some(next_id) = updates
-                    .iter()
-                    .map(|v| v["update_id"].as_u64().unwrap())
-                    .max()
-                {
-                    log::debug!("next_id = {}", next_id);
-                    params_get_updates["offset"] = json!(next_id + 1);
-                }
-
-                process_updates(updates, &mut metadata_store).unwrap();
-                // TODO Error handling goes here
-            }
-            _ => println!(
-                "Server returned {}.\n{}",
-                response.status(),
-                response.text()?
-            ),
+impl StatsBot {
+    pub fn new(
+        api_url: &str,
+        reqwest_client: reqwest::Client,
+        metadata_store: MetadataStore,
+    ) -> Self {
+        Self {
+            api_url_get_updates: format!("{}/getUpdates", api_url),
+            api_url_send_message: format!("{}/sendMessage", api_url),
+            reqwest_client,
+            metadata_store,
+            user_names: HashMap::new(),
         }
     }
 
-    Ok(())
+    fn command_stats(&self, chat_id: i64) -> reqwest::Result<()> {
+        let mut response = "Käyttäjät:\n----------\n".to_string();
+        for (user, count) in self.metadata_store.get_chat_message_counts_by_user(chat_id) {
+            response.push_str(&format!(
+                "{}: {}\n",
+                self.user_names.get(&user).unwrap_or(&user.to_string()),
+                count
+            ));
+        }
+
+        self.reqwest_client
+            .post(&self.api_url_send_message)
+            .json(&json!({
+                "chat_id": chat_id,
+                "text": response
+            }))
+            .send()?;
+        Ok(())
+    }
+
+    fn store_user_name(&mut self, user_id: i64, user: &serde_json::Value) {
+        if !self.user_names.contains_key(&user_id) {
+            let mut user_name = user["first_name"].as_str().unwrap().to_string();
+
+            if let Some(last_name) = user.get("last_name") {
+                user_name.push_str(&format!(" {}", last_name));
+            }
+
+            if let Some(username) = user.get("username") {
+                user_name.push_str(&format!(" ({})", username));
+            }
+
+            self.user_names.insert(user_id, user_name);
+        }
+    }
+
+    fn process_updates(
+        &mut self,
+        updates: &[serde_json::Value],
+    ) -> Result<(), metadata_store::Error> {
+        for update in updates {
+            log::trace!("{}", update);
+
+            if let Some(message) = update.get("message") {
+                let chat_id = message["chat"]["id"].as_i64().unwrap();
+                let user = &message["from"];
+                let user_id = user["id"].as_i64().unwrap();
+                let timestamp = message["date"].as_u64().unwrap();
+
+                if !user["is_bot"].as_bool().unwrap() {
+                    self.metadata_store
+                        .add_message(chat_id, Message { user_id, timestamp })?;
+                    self.store_user_name(user_id, user);
+                }
+
+                if let Some(entities) = message.get("entities") {
+                    for entity in entities.as_array().unwrap() {
+                        match entity["type"].as_str().unwrap() {
+                            "bot_command" => {
+                                let command = message["text"].as_str().unwrap();
+                                log::info!("Received command: '{}' from {}", command, user_id);
+                                match command {
+                                    "/tilasto" => {
+                                        // TODO handle error
+                                        self.command_stats(chat_id).unwrap()
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn poll(&mut self, running: Arc<AtomicBool>, timeout_secs: u64) -> reqwest::Result<()> {
+        use reqwest::StatusCode;
+
+        let mut params_get_updates = json!({ "timeout": timeout_secs });
+
+        log::info!("Starting polling, timeout {}s", timeout_secs);
+
+        let mut error_count = 0;
+        while running.load(Ordering::SeqCst) {
+            log::trace!("Sending a new update request");
+            let mut response = match self
+                .reqwest_client
+                .get(&self.api_url_get_updates)
+                .json(&params_get_updates)
+                .send()
+            {
+                Ok(response) => response,
+                Err(e) => {
+                    log::info!("Update request error: {}", e);
+                    error_count += 1;
+                    if error_count > 32 {
+                        log::error!("Too many consecutive errors, aborting");
+                        return Err(e);
+                    }
+                    continue;
+                }
+            };
+
+            error_count = 0;
+
+            match response.status() {
+                StatusCode::OK => {
+                    let updates: serde_json::Value = response.json()?;
+                    if !updates["ok"].as_bool().unwrap() {
+                        panic!("Telegram getUpdates returned ok: false");
+                    }
+
+                    let updates: &Vec<serde_json::Value> = updates["result"].as_array().unwrap();
+
+                    if let Some(next_id) = updates
+                        .iter()
+                        .map(|v| v["update_id"].as_u64().unwrap())
+                        .max()
+                    {
+                        log::debug!("next_id = {}", next_id);
+                        params_get_updates["offset"] = json!(next_id + 1);
+                    }
+
+                    self.process_updates(updates).unwrap();
+                    // TODO Error handling goes here
+                }
+                _ => println!(
+                    "Server returned {}.\n{}",
+                    response.status(),
+                    response.text()?
+                ),
+            }
+        }
+
+        Ok(())
+    }
 }
