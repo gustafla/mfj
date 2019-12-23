@@ -26,12 +26,6 @@ impl From<std::io::Error> for Error {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct Message {
-    pub user_id: i64,
-    pub timestamp: u64,
-}
-
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct MetadataContent {
     timestamps_by_chat_user:
@@ -61,7 +55,7 @@ impl MetadataStore {
             .create(true)
             .open(&file_path)?;
 
-        Ok(MetadataStore {
+        Ok(Self {
             content: {
                 serde_json::from_reader(GzDecoder::new(&file)).unwrap_or_else(|e| {
                     log::info!(
@@ -78,14 +72,14 @@ impl MetadataStore {
         })
     }
 
-    pub fn add_message(&mut self, chat_id: i64, message: Message) -> Result<(), Error> {
+    pub fn add_message(&mut self, chat_id: i64, user_id: i64, timestamp: u64) -> Result<(), Error> {
         let chat_users = self
             .content
             .timestamps_by_chat_user
             .entry(chat_id)
             .or_insert(HashMap::new());
-        let timestamps = chat_users.entry(message.user_id).or_insert(Vec::new());
-        timestamps.push(message.timestamp);
+        let timestamps = chat_users.entry(user_id).or_insert(Vec::new());
+        timestamps.push(timestamp);
 
         if self.last_written.elapsed() > self.write_interval {
             self.sync_file()?;

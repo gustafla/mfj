@@ -1,7 +1,7 @@
 pub mod metadata_store;
 
 //use chrono::prelude::*;
-use metadata_store::{Message, MetadataStore};
+use metadata_store::MetadataStore;
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -78,7 +78,7 @@ impl StatsBot {
 
                 if !user["is_bot"].as_bool().unwrap() {
                     self.metadata_store
-                        .add_message(chat_id, Message { user_id, timestamp })?;
+                        .add_message(chat_id, user_id, timestamp)?;
                     self.store_user_name(user_id, user);
                 }
 
