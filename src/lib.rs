@@ -3,7 +3,6 @@ pub mod metadata_store;
 //use chrono::prelude::*;
 use metadata_store::{Message, MetadataStore};
 use serde_json::json;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -12,7 +11,6 @@ pub struct StatsBot {
     api_url_send_message: String,
     reqwest_client: reqwest::Client,
     metadata_store: MetadataStore,
-    user_names: HashMap<i64, String>,
 }
 
 impl StatsBot {
@@ -26,7 +24,6 @@ impl StatsBot {
             api_url_send_message: format!("{}/sendMessage", api_url),
             reqwest_client,
             metadata_store,
-            user_names: HashMap::new(),
         }
     }
 
@@ -35,7 +32,7 @@ impl StatsBot {
         for (user, count) in self.metadata_store.get_chat_message_counts_by_user(chat_id) {
             response.push_str(&format!(
                 "{}: {}\n",
-                self.user_names.get(&user).unwrap_or(&user.to_string()),
+                self.metadata_store.get_user_name(user).unwrap_or(&user.to_string()),
                 count
             ));
         }
@@ -51,19 +48,17 @@ impl StatsBot {
     }
 
     fn store_user_name(&mut self, user_id: i64, user: &serde_json::Value) {
-        if !self.user_names.contains_key(&user_id) {
-            let mut user_name = user["first_name"].as_str().unwrap().to_string();
+        let mut user_name = user["first_name"].as_str().unwrap().to_string();
 
-            if let Some(last_name) = user.get("last_name") {
-                user_name.push_str(&format!(" {}", last_name));
-            }
-
-            if let Some(username) = user.get("username") {
-                user_name.push_str(&format!(" ({})", username));
-            }
-
-            self.user_names.insert(user_id, user_name);
+        if let Some(last_name) = user.get("last_name") {
+            user_name.push_str(&format!(" {}", last_name));
         }
+
+        if let Some(username) = user.get("username") {
+            user_name.push_str(&format!(" ({})", username));
+        }
+
+        self.metadata_store.add_user_name(user_id, user_name);
     }
 
     fn process_updates(

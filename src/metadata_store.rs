@@ -1,5 +1,5 @@
+use serde::{Serialize, Deserialize};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
@@ -32,14 +32,16 @@ pub struct Message {
     pub timestamp: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct TimestampsByChatUser(
-    HashMap</* chat_id */ i64, HashMap</* user_id */ i64, Vec</* timestamp */ u64>>>,
-);
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct MetadataContent {
+    timestamps_by_chat_user:
+        HashMap</* chat_id */ i64, HashMap</* user_id */ i64, Vec</* timestamp */ u64>>>,
+    user_names: HashMap<i64, String>,
+}
 
 #[derive(Debug)]
 pub struct MetadataStore {
-    timestamps_by_chat_user: TimestampsByChatUser,
+    content: MetadataContent,
     file: File,
     last_written: Instant,
     write_interval: Duration,
@@ -60,7 +62,7 @@ impl MetadataStore {
             .open(&file_path)?;
 
         Ok(MetadataStore {
-            timestamps_by_chat_user: {
+            content: {
                 serde_json::from_reader(GzDecoder::new(&file)).unwrap_or_else(|e| {
                     log::info!(
                         "Failed to load {}, initializing new ({})",
@@ -78,8 +80,8 @@ impl MetadataStore {
 
     pub fn add_message(&mut self, chat_id: i64, message: Message) -> Result<(), Error> {
         let chat_users = self
+            .content
             .timestamps_by_chat_user
-            .0
             .entry(chat_id)
             .or_insert(HashMap::new());
         let timestamps = chat_users.entry(message.user_id).or_insert(Vec::new());
@@ -92,9 +94,17 @@ impl MetadataStore {
         Ok(())
     }
 
+    pub fn add_user_name(&mut self, user_id: i64, name: String) {
+        self.content.user_names.insert(user_id, name);
+    }
+
+    pub fn get_user_name(&self, user_id: i64) -> Option<&String> {
+        self.content.user_names.get(&user_id)
+    }
+
     pub fn get_chat_message_counts_by_user(&self, chat_id: i64) -> Vec<(i64, usize)> {
         let mut result = Vec::new();
-        if let Some(user_timestamps) = self.timestamps_by_chat_user.0.get(&chat_id) {
+        if let Some(user_timestamps) = self.content.timestamps_by_chat_user.get(&chat_id) {
             for (user, timestamps) in user_timestamps {
                 result.push((*user, timestamps.len()));
             }
@@ -109,7 +119,7 @@ impl MetadataStore {
         self.file.set_len(0)?;
         serde_json::to_writer(
             GzEncoder::new(&self.file, Compression::default()),
-            &self.timestamps_by_chat_user.0,
+            &self.content,
         )?;
         Ok(())
     }
