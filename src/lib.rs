@@ -28,11 +28,13 @@ impl StatsBot {
     }
 
     fn command_stats(&self, chat_id: i64) -> reqwest::Result<()> {
-        let mut response = "Käyttäjät:\n----------\n".to_string();
+        let mut response = Vec::new();
         for (user, count) in self.metadata_store.get_chat_message_counts_by_user(chat_id) {
-            response.push_str(&format!(
+            response.push(format!(
                 "{}: {}\n",
-                self.metadata_store.get_user_name(user).unwrap_or(&user.to_string()),
+                self.metadata_store
+                    .get_user_name(user)
+                    .unwrap_or(&user.to_string()),
                 count
             ));
         }
@@ -41,7 +43,7 @@ impl StatsBot {
             .post(&self.api_url_send_message)
             .json(&json!({
                 "chat_id": chat_id,
-                "text": response
+                "text": response.concat()
             }))
             .send()?;
         Ok(())
@@ -154,10 +156,10 @@ impl StatsBot {
                     self.process_updates(updates).unwrap();
                     // TODO Error handling goes here
                 }
-                _ => println!(
+                other => log::error!(
                     "Server returned {}.\n{}",
-                    response.status(),
-                    response.text()?
+                    other,
+                    response.text().unwrap_or(String::new())
                 ),
             }
         }

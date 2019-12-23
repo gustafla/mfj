@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
@@ -98,8 +98,8 @@ impl MetadataStore {
         self.content.user_names.insert(user_id, name);
     }
 
-    pub fn get_user_name(&self, user_id: i64) -> Option<&String> {
-        self.content.user_names.get(&user_id)
+    pub fn get_user_name(&self, user_id: i64) -> Option<&str> {
+        self.content.user_names.get(&user_id).map(|s| s.as_str())
     }
 
     pub fn get_chat_message_counts_by_user(&self, chat_id: i64) -> Vec<(i64, usize)> {
