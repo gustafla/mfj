@@ -53,11 +53,11 @@ impl StatsBot {
         let mut user_name = user["first_name"].as_str().unwrap().to_string();
 
         if let Some(last_name) = user.get("last_name") {
-            user_name.push_str(&format!(" {}", last_name));
+            user_name.push_str(&format!(" {}", last_name.as_str().unwrap()));
         }
 
         if let Some(username) = user.get("username") {
-            user_name.push_str(&format!(" ({})", username));
+            user_name.push_str(&format!(" ({})", username.as_str().unwrap()));
         }
 
         self.metadata_store.add_user_name(user_id, user_name);
