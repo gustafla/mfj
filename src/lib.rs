@@ -28,8 +28,11 @@ impl StatsBot {
     }
 
     fn command_stats(&self, chat_id: i64) -> reqwest::Result<()> {
-        let mut response = Vec::new();
-        for (user, count) in self.metadata_store.get_chat_message_counts_by_user(chat_id) {
+        let user_message_counts = self.metadata_store.get_chat_message_counts_by_user(chat_id);
+        let total: usize = user_message_counts.iter().map(|e| e.1).sum();
+
+        let mut response = vec![format!("Total messages: {}\n\n", total)];
+        for (user, count) in user_message_counts {
             response.push(format!(
                 "{}: {}\n",
                 self.metadata_store
