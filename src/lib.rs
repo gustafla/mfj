@@ -67,7 +67,7 @@ impl StatsBot {
         &mut self,
         updates: &[serde_json::Value],
     ) -> Result<(), metadata_store::Error> {
-        for update in updates {
+        'update_loop: for update in updates {
             log::trace!("{}", update);
 
             if let Some(message) = update.get("message") {
@@ -76,11 +76,7 @@ impl StatsBot {
                 let user_id = user["id"].as_i64().unwrap();
                 let timestamp = message["date"].as_u64().unwrap();
 
-                if !user["is_bot"].as_bool().unwrap() {
-                    self.metadata_store
-                        .add_message(chat_id, user_id, timestamp)?;
-                    self.store_user_name(user_id, user);
-                }
+                self.store_user_name(user_id, user);
 
                 if let Some(entities) = message.get("entities") {
                     for entity in entities.as_array().unwrap() {
@@ -95,11 +91,15 @@ impl StatsBot {
                                     }
                                     _ => {}
                                 }
+                                continue 'update_loop; // Do not count bot commands
                             }
                             _ => {}
                         }
                     }
                 }
+
+                self.metadata_store
+                    .add_message(chat_id, user_id, timestamp)?;
             }
         }
         Ok(())
