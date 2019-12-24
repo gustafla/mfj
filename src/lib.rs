@@ -27,7 +27,7 @@ impl StatsBot {
         }
     }
 
-    fn command_stats(&self, chat_id: i64) -> reqwest::Result<()> {
+    fn command_stats(&self, _command: &str, chat_id: i64) -> reqwest::Result<()> {
         let user_message_counts = self.metadata_store.get_chat_message_counts_by_user(chat_id);
         let total: usize = user_message_counts.iter().map(|e| e.1).sum();
 
@@ -87,10 +87,14 @@ impl StatsBot {
                             "bot_command" => {
                                 let command = message["text"].as_str().unwrap();
                                 log::info!("Received command: '{}' from {}", command, user_id);
-                                match command {
+
+                                // Get the command part of a command message and pattern match it
+                                match command.split('@').next().unwrap_or_else(|| {
+                                    command.split_whitespace().next().unwrap_or(command)
+                                }) {
                                     "/tilasto" => {
                                         // TODO handle error
-                                        self.command_stats(chat_id).unwrap()
+                                        self.command_stats(command, chat_id).unwrap()
                                     }
                                     _ => {}
                                 }
