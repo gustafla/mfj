@@ -89,9 +89,9 @@ impl StatsBot {
                                 log::info!("Received command: '{}' from {}", command, user_id);
 
                                 // Get the command part of a command message and pattern match it
-                                match command.split('@').next().unwrap_or_else(|| {
-                                    command.split_whitespace().next().unwrap_or(command)
-                                }) {
+                                // Won't panic, always contains at least a '/'
+                                let first_word = command.split_whitespace().next().unwrap();
+                                match first_word.split('@').next().unwrap_or(first_word) {
                                     "/tilasto" => {
                                         // TODO handle error
                                         self.command_stats(command, chat_id).unwrap()
