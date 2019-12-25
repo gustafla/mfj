@@ -34,11 +34,12 @@ impl StatsBot {
         let mut response = vec![format!("Total messages: {}\n\n", total)];
         for (user, count) in user_message_counts {
             response.push(format!(
-                "{}: {}\n",
+                "{}: {} ({:.1}%)\n",
                 self.metadata_store
                     .get_user_name(user)
                     .unwrap_or(&user.to_string()),
-                count
+                count,
+                (count * 100) as f64 / total as f64
             ));
         }
 
