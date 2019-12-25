@@ -5,7 +5,6 @@
 - [ ] Keyword filtering output listing
   - [ ] Define wanted keyword groups from CLI
 - [ ] Graphs and bars (per chat and per user)
-- [ ] Output listing tabulation (0x200f?)
 - [ ] Prettier error handling
 
 ## Not to do
