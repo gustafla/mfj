@@ -64,6 +64,12 @@ impl StatsBot {
             user_name.push_str(&format!(" ({})", username.as_str().unwrap()));
         }
 
+        // Remove cheeky Right to Left codes from names (TODO more sanitization)
+        user_name = user_name
+            .chars()
+            .filter(|c| *c as u32 != 0x200f_u32)
+            .collect();
+
         self.metadata_store.add_user_name(user_id, user_name);
     }
 
