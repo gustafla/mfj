@@ -1,3 +1,4 @@
+use crate::{TelegramChatId, TelegramUserId};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -28,9 +29,8 @@ impl From<std::io::Error> for Error {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct MetadataContent {
-    timestamps_by_chat_user:
-        HashMap</* chat_id */ i64, HashMap</* user_id */ i64, Vec</* timestamp */ u64>>>,
-    user_names: HashMap<i64, String>,
+    timestamps_by_chat_user: HashMap<TelegramChatId, HashMap<TelegramUserId, Vec<i64>>>,
+    user_names: HashMap<TelegramUserId, String>,
 }
 
 #[derive(Debug)]
@@ -72,7 +72,12 @@ impl MetadataStore {
         })
     }
 
-    pub fn add_message(&mut self, chat_id: i64, user_id: i64, timestamp: u64) -> Result<(), Error> {
+    pub fn add_message(
+        &mut self,
+        chat_id: TelegramChatId,
+        user_id: TelegramUserId,
+        timestamp: i64,
+    ) -> Result<(), Error> {
         let chat_users = self
             .content
             .timestamps_by_chat_user
@@ -88,15 +93,18 @@ impl MetadataStore {
         Ok(())
     }
 
-    pub fn add_user_name(&mut self, user_id: i64, name: String) {
+    pub fn add_user_name(&mut self, user_id: TelegramUserId, name: String) {
         self.content.user_names.insert(user_id, name);
     }
 
-    pub fn get_user_name(&self, user_id: i64) -> Option<&str> {
+    pub fn get_user_name(&self, user_id: TelegramUserId) -> Option<&str> {
         self.content.user_names.get(&user_id).map(|s| s.as_str())
     }
 
-    pub fn get_chat_message_counts_by_user(&self, chat_id: i64) -> Vec<(i64, usize)> {
+    pub fn get_chat_message_counts_by_user(
+        &self,
+        chat_id: TelegramChatId,
+    ) -> Vec<(TelegramUserId, usize)> {
         let mut result = Vec::new();
         if let Some(user_timestamps) = self.content.timestamps_by_chat_user.get(&chat_id) {
             for (user, timestamps) in user_timestamps {

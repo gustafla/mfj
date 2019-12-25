@@ -1,11 +1,11 @@
 ## To do
 
-- [ ] Telegram identifier type aliases
 - [ ] Date filtering output listing
 - [ ] Keyword filtering output listing
   - [ ] Define wanted keyword groups from CLI
 - [ ] Graphs and bars (per chat and per user)
 - [ ] Prettier error handling
+- [x] Telegram identifier type aliases
 
 ## Not to do
 

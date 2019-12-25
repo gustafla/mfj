@@ -6,6 +6,9 @@ use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+pub type TelegramUserId = i32;
+pub type TelegramChatId = i64;
+
 pub struct StatsBot {
     api_url_get_updates: String,
     api_url_send_message: String,
@@ -27,7 +30,7 @@ impl StatsBot {
         }
     }
 
-    fn command_stats(&self, _command: &str, chat_id: i64) -> reqwest::Result<()> {
+    fn command_stats(&self, _command: &str, chat_id: TelegramChatId) -> reqwest::Result<()> {
         let user_message_counts = self.metadata_store.get_chat_message_counts_by_user(chat_id);
         let total: usize = user_message_counts.iter().map(|e| e.1).sum();
 
@@ -53,7 +56,7 @@ impl StatsBot {
         Ok(())
     }
 
-    fn store_user_name(&mut self, user_id: i64, user: &serde_json::Value) {
+    fn store_user_name(&mut self, user_id: TelegramUserId, user: &serde_json::Value) {
         let mut user_name = user["first_name"].as_str().unwrap().to_string();
 
         if let Some(last_name) = user.get("last_name") {
@@ -77,14 +80,16 @@ impl StatsBot {
         &mut self,
         updates: &[serde_json::Value],
     ) -> Result<(), metadata_store::Error> {
+        use std::convert::TryInto;
+
         'update_loop: for update in updates {
             log::trace!("{}", update);
 
             if let Some(message) = update.get("message") {
-                let chat_id = message["chat"]["id"].as_i64().unwrap();
+                let chat_id: TelegramChatId = message["chat"]["id"].as_i64().unwrap();
                 let user = &message["from"];
-                let user_id = user["id"].as_i64().unwrap();
-                let timestamp = message["date"].as_u64().unwrap();
+                let user_id: TelegramUserId = user["id"].as_i64().unwrap().try_into().unwrap();
+                let timestamp = message["date"].as_i64().unwrap();
 
                 self.store_user_name(user_id, user);
 
