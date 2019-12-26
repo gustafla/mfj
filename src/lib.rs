@@ -22,7 +22,7 @@ pub struct StatsBot {
     metadata_store: MetadataStore,
     last_command_invocation_and_message_id_by_chat:
         HashMap<TelegramChatId, (CommandInvocation, TelegramMessageId)>,
-    message_count_after_last_post: usize,
+    messages_after_last_post_by_chat: HashMap<TelegramChatId, usize>,
 }
 
 impl StatsBot {
@@ -38,7 +38,7 @@ impl StatsBot {
             reqwest_client,
             metadata_store,
             last_command_invocation_and_message_id_by_chat: HashMap::new(),
-            message_count_after_last_post: 0,
+            messages_after_last_post_by_chat: HashMap::new(),
         }
     }
 
@@ -150,7 +150,7 @@ impl StatsBot {
                                     // Store last command invocation and response ids
                                     self.last_command_invocation_and_message_id_by_chat
                                         .insert(chat_id, (invocation, message_id));
-                                    self.message_count_after_last_post = 0;
+                                    self.messages_after_last_post_by_chat.insert(chat_id, 0);
                                 }
 
                                 continue 'update_loop; // Do not count bot commands
@@ -161,19 +161,33 @@ impl StatsBot {
                 }
 
                 // Count message
-                self.message_count_after_last_post += 1;
+                let count = self
+                    .messages_after_last_post_by_chat
+                    .get(&chat_id)
+                    .map(|i| *i)
+                    .unwrap_or(0);
+                self.messages_after_last_post_by_chat
+                    .insert(chat_id, count + 1);
                 self.metadata_store
                     .add_message(chat_id, user_id, timestamp)?;
 
                 // Update previous response with new invocation
-                if self.message_count_after_last_post < 100 {
+                log::debug!("messages_after_last_post_by_chat[{}] = {}", chat_id, count);
+                if count <= 100 {
                     if let Some((invocation, message_id)) = self
                         .last_command_invocation_and_message_id_by_chat
                         .get(&chat_id)
                     {
+                        log::info!(
+                            "Updating last response to {} (message {}) in chat {}",
+                            invocation.command_string,
+                            message_id,
+                            chat_id
+                        );
+
                         let text = invocation.run(&mut self.metadata_store);
-                        // TODO handle error
                         self.update_message(chat_id, *message_id, &text).unwrap();
+                        // TODO handle error
                     }
                 }
             }
