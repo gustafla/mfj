@@ -1,19 +1,28 @@
+pub mod commands;
 pub mod metadata_store;
 
 //use chrono::prelude::*;
+use commands::CommandInvocation;
 use metadata_store::MetadataStore;
 use serde_json::json;
+use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 pub type TelegramUserId = i32;
 pub type TelegramChatId = i64;
+pub type TelegramMessageId = i32;
 
 pub struct StatsBot {
     api_url_get_updates: String,
     api_url_send_message: String,
+    api_url_edit_message_text: String,
     reqwest_client: reqwest::Client,
     metadata_store: MetadataStore,
+    last_command_invocation_and_message_id_by_chat:
+        HashMap<TelegramChatId, (CommandInvocation, TelegramMessageId)>,
+    message_count_after_last_post: usize,
 }
 
 impl StatsBot {
@@ -25,34 +34,52 @@ impl StatsBot {
         Self {
             api_url_get_updates: format!("{}/getUpdates", api_url),
             api_url_send_message: format!("{}/sendMessage", api_url),
+            api_url_edit_message_text: format!("{}/editMessageText", api_url),
             reqwest_client,
             metadata_store,
+            last_command_invocation_and_message_id_by_chat: HashMap::new(),
+            message_count_after_last_post: 0,
         }
     }
 
-    fn command_stats(&self, _command: &str, chat_id: TelegramChatId) -> reqwest::Result<()> {
-        let user_message_counts = self.metadata_store.get_chat_message_counts_by_user(chat_id);
-        let total: usize = user_message_counts.iter().map(|e| e.1).sum();
-
-        let mut response = vec![format!("Total messages: {}\n\n", total)];
-        for (user, count) in user_message_counts {
-            response.push(format!(
-                "{}: {} ({:.1}%)\n",
-                self.metadata_store
-                    .get_user_name(user)
-                    .unwrap_or(&user.to_string()),
-                count,
-                (count * 100) as f64 / total as f64
-            ));
-        }
-
-        self.reqwest_client
+    fn send_message(
+        &self,
+        chat_id: TelegramChatId,
+        text: &str,
+    ) -> reqwest::Result<TelegramMessageId> {
+        let response: serde_json::Value = self
+            .reqwest_client
             .post(&self.api_url_send_message)
             .json(&json!({
                 "chat_id": chat_id,
-                "text": response.concat()
+                "text": text
+            }))
+            .send()?
+            .json()
+            .unwrap();
+
+        Ok(response["result"]["message_id"]
+            .as_i64()
+            .unwrap()
+            .try_into()
+            .unwrap())
+    }
+
+    fn update_message(
+        &self,
+        chat_id: TelegramChatId,
+        message_id: TelegramMessageId,
+        text: &str,
+    ) -> reqwest::Result<()> {
+        self.reqwest_client
+            .post(&self.api_url_edit_message_text)
+            .json(&json!({
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text
             }))
             .send()?;
+
         Ok(())
     }
 
@@ -80,8 +107,6 @@ impl StatsBot {
         &mut self,
         updates: &[serde_json::Value],
     ) -> Result<(), metadata_store::Error> {
-        use std::convert::TryInto;
-
         'update_loop: for update in updates {
             log::trace!("{}", update);
 
@@ -102,14 +127,32 @@ impl StatsBot {
 
                                 // Get the command part of a command message and pattern match it
                                 // Won't panic, always contains at least a '/'
-                                let first_word = command.split_whitespace().next().unwrap();
-                                match first_word.split('@').next().unwrap_or(first_word) {
-                                    "/tilasto" => {
-                                        // TODO handle error
-                                        self.command_stats(command, chat_id).unwrap()
-                                    }
-                                    _ => {}
+                                let word = command.split_whitespace().next().unwrap();
+                                let word = word.split('@').next().unwrap_or(word);
+                                let procedure = match word {
+                                    "/tilasto" => Some(commands::command_stats::render),
+                                    _ => None,
+                                };
+
+                                if let Some(procedure) = procedure {
+                                    let invocation = CommandInvocation {
+                                        procedure,
+                                        command_string: command.to_string(),
+                                        chat_id,
+                                    };
+
+                                    // Run command
+                                    let text = invocation.run(&mut self.metadata_store);
+
+                                    // Send result (TODO handle error)
+                                    let message_id = self.send_message(chat_id, &text).unwrap();
+
+                                    // Store last command invocation and response ids
+                                    self.last_command_invocation_and_message_id_by_chat
+                                        .insert(chat_id, (invocation, message_id));
+                                    self.message_count_after_last_post = 0;
                                 }
+
                                 continue 'update_loop; // Do not count bot commands
                             }
                             _ => {}
@@ -117,10 +160,25 @@ impl StatsBot {
                     }
                 }
 
+                // Count message
+                self.message_count_after_last_post += 1;
                 self.metadata_store
                     .add_message(chat_id, user_id, timestamp)?;
+
+                // Update previous response with new invocation
+                if self.message_count_after_last_post < 100 {
+                    if let Some((invocation, message_id)) = self
+                        .last_command_invocation_and_message_id_by_chat
+                        .get(&chat_id)
+                    {
+                        let text = invocation.run(&mut self.metadata_store);
+                        // TODO handle error
+                        self.update_message(chat_id, *message_id, &text).unwrap();
+                    }
+                }
             }
         }
+
         Ok(())
     }
 

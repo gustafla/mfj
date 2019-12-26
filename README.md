@@ -5,6 +5,7 @@
   - [ ] Define wanted keyword groups from CLI
 - [ ] Graphs and bars (per chat and per user)
 - [ ] Prettier error handling
+- [x] Update last message
 - [x] Telegram identifier type aliases
 
 ## Not to do
