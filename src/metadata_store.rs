@@ -104,11 +104,12 @@ impl MetadataStore {
     pub fn get_chat_message_counts_by_user(
         &self,
         chat_id: TelegramChatId,
+        after_unix: i64,
     ) -> Vec<(TelegramUserId, usize)> {
         let mut result = Vec::new();
         if let Some(user_timestamps) = self.content.timestamps_by_chat_user.get(&chat_id) {
             for (user, timestamps) in user_timestamps {
-                result.push((*user, timestamps.len()));
+                result.push((*user, timestamps.iter().filter(|t| **t > after_unix).count()));
             }
         }
         result.sort_unstable_by(|a, b| b.1.cmp(&a.1));

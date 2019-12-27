@@ -1,12 +1,13 @@
 ## To do
 
-- [ ] Date filtering output listing
+- [x] Date filtering output listing
 - [ ] Keyword filtering output listing
   - [ ] Define wanted keyword groups from CLI
 - [ ] Graphs and bars (per chat and per user)
 - [ ] Prettier error handling
 - [x] Update last message
 - [x] Telegram identifier type aliases
+- [ ] Last posted link(s) (youtube, soundcloud, spotify)
 
 ## Not to do
 
