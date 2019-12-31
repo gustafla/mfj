@@ -107,12 +107,16 @@ impl MetadataStore {
         after_unix: i64,
     ) -> Vec<(TelegramUserId, usize)> {
         let mut result = Vec::new();
+
         if let Some(user_timestamps) = self.content.timestamps_by_chat_user.get(&chat_id) {
-            for (user, timestamps) in user_timestamps {
-                result.push((*user, timestamps.iter().filter(|t| **t > after_unix).count()));
-            }
+            result = user_timestamps
+                .iter()
+                .map(|(u, t)| (*u, t.iter().filter(|t| **t > after_unix).count()))
+                .filter(|(_, n)| *n > 0)
+                .collect();
+            result.sort_unstable_by(|a, b| b.1.cmp(&a.1));
         }
-        result.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
         result
     }
 
