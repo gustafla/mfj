@@ -12,9 +12,13 @@ pub fn render(
     if let Some(param) = command.split_whitespace().next() {
         let time_str = &command[param.len()..].trim();
         if let Some(duration) = humantime::parse_duration(time_str).ok() {
-            if let Some(current_unix) = SystemTime::now().duration_since(UNIX_EPOCH).ok() {
-                from = time_str;
-                after_unix = current_unix.as_secs() - duration.as_secs();
+            if let Some(after) = SystemTime::now().checked_sub(duration) {
+                if let Some(after_since_epoch) = after.duration_since(UNIX_EPOCH).ok() {
+                    after_unix = after_since_epoch.as_secs();
+                    from = time_str;
+                } else {
+                    log::error!("System time conversion failed for command {}", command);
+                }
             }
         }
     }
