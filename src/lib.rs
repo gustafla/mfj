@@ -128,7 +128,7 @@ impl StatsBot {
                                 // Won't panic, always contains at least a '/'
                                 let word = command.split_whitespace().next().unwrap();
                                 let word = word.split('@').next().unwrap_or(word);
-                                let procedure = match word {
+                                let procedure: Option<commands::CommandProcedure> = match word {
                                     "/tilasto" => Some(commands::command_stats::render),
                                     _ => None,
                                 };

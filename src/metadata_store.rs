@@ -101,7 +101,7 @@ impl MetadataStore {
         self.content.user_names.get(&user_id).map(|s| s.as_str())
     }
 
-    pub fn get_chat_message_counts_by_user(
+    pub fn get_message_counts_by_user(
         &self,
         chat_id: TelegramChatId,
         after_unix: i64,

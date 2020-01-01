@@ -1,6 +1,6 @@
 [package]
 name = "mfj"
-version = "1.3.2"
+version = "1.3.3"
 authors = ["Lauri Gustafsson <me@gustafla.space>"]
 edition = "2018"
 
