@@ -7,7 +7,6 @@
 - [ ] Prettier error handling
 - [x] Update last message
 - [x] Telegram identifier type aliases
-- [ ] Last posted link(s) (youtube, soundcloud, spotify)
 
 ## Not to do
 
