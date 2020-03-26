@@ -42,31 +42,32 @@ pub struct MetadataStore {
 }
 
 impl MetadataStore {
-    pub fn new<P: AsRef<Path>>(file_path: P, write_interval: Duration) -> Result<Self, Error> {
+    pub fn new(
+        read_path: Option<impl AsRef<Path>>,
+        write_path: impl AsRef<Path>,
+        write_interval: Duration,
+    ) -> Result<Self, Error> {
         log::info!(
             "Initializing metadata storage, path: {}, write interval: {}",
-            file_path.as_ref().to_string_lossy(),
+            write_path.as_ref().to_string_lossy(),
             humantime::format_duration(write_interval)
         );
 
-        let file = OpenOptions::new()
-            .read(true)
+        let content = if let Some(read_path) = read_path {
+            let read_file = File::open(&read_path)?;
+            serde_json::from_reader(GzDecoder::new(&read_file))?
+        } else {
+            Default::default()
+        };
+
+        let write_file = OpenOptions::new()
             .write(true)
             .create(true)
-            .open(&file_path)?;
+            .open(&write_path)?;
 
         Ok(Self {
-            content: {
-                serde_json::from_reader(GzDecoder::new(&file)).unwrap_or_else(|e| {
-                    log::info!(
-                        "Failed to load {}, initializing new ({})",
-                        file_path.as_ref().to_string_lossy(),
-                        e
-                    );
-                    Default::default()
-                })
-            },
-            file,
+            content,
+            file: write_file,
             last_written: Instant::now(),
             write_interval,
         })

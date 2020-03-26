@@ -2,11 +2,33 @@ use clap::{self, App, Arg};
 use log;
 use mfj::metadata_store::MetadataStore;
 use simple_logger;
+use std::error::Error;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{env, time::Duration};
 
-fn main() {
+fn find_dumps() -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut entries: Vec<_> = fs::read_dir(".")?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .map(|os| {
+                    os.to_str()
+                        .map(|s| s.starts_with("messages"))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+    entries.sort_unstable_by(|p1, p2| p2.cmp(p1)); // newest first order (filenames alphabetically)
+    Ok(entries)
+}
+
+#[tokio::main]
+async fn main() {
     // Try to load .env file
     #[cfg(feature = "dotenv")]
     {
@@ -80,9 +102,10 @@ fn main() {
         .map(|s| humantime::parse_duration(s).expect(&format!("Failed to parse {}", s)))
         .unwrap_or(Duration::new(60 * 30, 0)); // 30m if -w / --write-interval is not provided
 
+    let default_filename = format!("./messages-{}.json.gz", chrono::Local::now());
     let metadata_store_path = cmd_options
         .value_of("metadata_store_path")
-        .unwrap_or("./messages.json.gz");
+        .unwrap_or(&default_filename);
 
     let reqwest_client = reqwest::Client::builder()
         .timeout(Duration::new(
@@ -105,7 +128,18 @@ fn main() {
     .expect("Logger failed to initialize");
     log::info!("Starting version {}", clap::crate_version!());
 
-    let metadata_store = MetadataStore::new(metadata_store_path, write_interval).unwrap();
+    let metadata_store = find_dumps()
+        .unwrap()
+        .iter()
+        .filter_map(|read_path| {
+            log::info!("Trying to load {}", read_path.display());
+            MetadataStore::new(Some(read_path), metadata_store_path, write_interval).ok()
+        })
+        .next()
+        .unwrap_or_else(|| {
+            log::info!("Failed to load backups, starting fresh");
+            MetadataStore::new(None::<&PathBuf>, metadata_store_path, write_interval).unwrap()
+        });
     // TODO error handling goes here
 
     let running = Arc::new(AtomicBool::new(true));
@@ -125,6 +159,7 @@ fn main() {
 
     mfj::StatsBot::new(&api_url, reqwest_client, metadata_store)
         .poll(running, timeout_secs)
+        .await
         .unwrap();
     // TODO error handling goes here
 }

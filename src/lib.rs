@@ -41,21 +41,22 @@ impl StatsBot {
         }
     }
 
-    fn send_message(
+    async fn send_message(
         &self,
         chat_id: TelegramChatId,
         text: &str,
     ) -> reqwest::Result<TelegramMessageId> {
-        let response: serde_json::Value = self
+        let response = self
             .reqwest_client
             .post(&self.api_url_send_message)
             .json(&json!({
                 "chat_id": chat_id,
                 "text": text
             }))
-            .send()?
-            .json()
-            .unwrap();
+            .send()
+            .await?;
+
+        let response: serde_json::Value = response.json().await?;
 
         Ok(response["result"]["message_id"]
             .as_i64()
@@ -64,7 +65,7 @@ impl StatsBot {
             .unwrap())
     }
 
-    fn update_message(
+    async fn update_message(
         &self,
         chat_id: TelegramChatId,
         message_id: TelegramMessageId,
@@ -77,7 +78,8 @@ impl StatsBot {
                 "message_id": message_id,
                 "text": text
             }))
-            .send()?;
+            .send()
+            .await?;
 
         Ok(())
     }
@@ -102,7 +104,7 @@ impl StatsBot {
         self.metadata_store.add_user_name(user_id, user_name);
     }
 
-    fn process_updates(
+    async fn process_updates(
         &mut self,
         updates: &[serde_json::Value],
     ) -> Result<(), metadata_store::Error> {
@@ -144,7 +146,8 @@ impl StatsBot {
                                     let text = invocation.run(&mut self.metadata_store);
 
                                     // Send result (TODO handle error)
-                                    let message_id = self.send_message(chat_id, &text).unwrap();
+                                    let message_id =
+                                        self.send_message(chat_id, &text).await.unwrap();
 
                                     // Store last command invocation and response ids
                                     self.last_command_invocation_and_message_id_by_chat
@@ -185,7 +188,9 @@ impl StatsBot {
                         );
 
                         let text = invocation.run(&mut self.metadata_store);
-                        self.update_message(chat_id, *message_id, &text).unwrap();
+                        self.update_message(chat_id, *message_id, &text)
+                            .await
+                            .unwrap();
                         // TODO handle error
                     }
                 }
@@ -195,7 +200,11 @@ impl StatsBot {
         Ok(())
     }
 
-    pub fn poll(&mut self, running: Arc<AtomicBool>, timeout_secs: u64) -> reqwest::Result<()> {
+    pub async fn poll(
+        &mut self,
+        running: Arc<AtomicBool>,
+        timeout_secs: u64,
+    ) -> reqwest::Result<()> {
         use reqwest::StatusCode;
 
         let mut params_get_updates = json!({ "timeout": timeout_secs });
@@ -205,11 +214,12 @@ impl StatsBot {
         let mut error_count = 0;
         while running.load(Ordering::SeqCst) {
             log::trace!("Sending a new update request");
-            let mut response = match self
+            let response = match self
                 .reqwest_client
                 .get(&self.api_url_get_updates)
                 .json(&params_get_updates)
                 .send()
+                .await
             {
                 Ok(response) => response,
                 Err(e) => {
@@ -227,7 +237,7 @@ impl StatsBot {
 
             match response.status() {
                 StatusCode::OK => {
-                    let updates: serde_json::Value = response.json()?;
+                    let updates: serde_json::Value = response.json().await?;
                     if !updates["ok"].as_bool().unwrap() {
                         panic!("Telegram getUpdates returned ok: false");
                     }
@@ -243,13 +253,13 @@ impl StatsBot {
                         params_get_updates["offset"] = json!(next_id + 1);
                     }
 
-                    self.process_updates(updates).unwrap();
+                    self.process_updates(updates).await.unwrap();
                     // TODO Error handling goes here
                 }
                 other => log::error!(
                     "Server returned {}.\n{}",
                     other,
-                    response.text().unwrap_or(String::new())
+                    response.text().await.unwrap_or(String::new())
                 ),
             }
         }
