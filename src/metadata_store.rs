@@ -8,23 +8,14 @@ use std::{
     path::Path,
     time::{Duration, Instant},
 };
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
-    JSON(serde_json::Error),
-    IO(std::io::Error),
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(error: serde_json::Error) -> Self {
-        Error::JSON(error)
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        Error::IO(error)
-    }
+    #[error("Failed to process json")]
+    Json(#[from] serde_json::Error),
+    #[error("An I/O error occured")]
+    Io(#[from] std::io::Error),
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -83,8 +74,8 @@ impl MetadataStore {
             .content
             .timestamps_by_chat_user
             .entry(chat_id)
-            .or_insert(HashMap::new());
-        let timestamps = chat_users.entry(user_id).or_insert(Vec::new());
+            .or_insert_with(HashMap::new);
+        let timestamps = chat_users.entry(user_id).or_insert_with(Vec::new);
         timestamps.push(timestamp);
 
         if self.last_written.elapsed() > self.write_interval {

@@ -8,9 +8,9 @@ pub fn convert_time(command: &str) -> Option<(i64, &str)> {
 
     if let Some(param) = command.split_whitespace().next() {
         let time_str = &command[param.len()..].trim();
-        if let Some(duration) = humantime::parse_duration(time_str).ok() {
+        if let Ok(duration) = humantime::parse_duration(time_str) {
             if let Some(after) = SystemTime::now().checked_sub(duration) {
-                if let Some(after_since_epoch) = after.duration_since(UNIX_EPOCH).ok() {
+                if let Ok(after_since_epoch) = after.duration_since(UNIX_EPOCH) {
                     return Some((after_since_epoch.as_secs().try_into().unwrap(), time_str));
                 } else {
                     log::error!("System time conversion failed for command {}", command);
