@@ -140,6 +140,7 @@ impl StatsBot {
                             let word = word.split('@').next().unwrap_or(word);
                             let procedure: Option<commands::CommandProcedure> = match word {
                                 "/tilasto" => Some(commands::command_stats::render),
+                                "/pisteet" => Some(commands::command_scores::render),
                                 _ => None,
                             };
 

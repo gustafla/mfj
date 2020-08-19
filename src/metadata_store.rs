@@ -18,9 +18,12 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
+type ChatUserMap<T> = HashMap<TelegramChatId, HashMap<TelegramUserId, T>>;
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct MetadataContent {
-    timestamps_by_chat_user: HashMap<TelegramChatId, HashMap<TelegramUserId, Vec<i64>>>,
+    timestamps_by_chat_user: ChatUserMap<Vec<i64>>,
+    keyword_scores_by_keyword_chat_user: HashMap<String, ChatUserMap<u64>>,
     user_names: HashMap<TelegramUserId, String>,
 }
 
@@ -70,13 +73,38 @@ impl MetadataStore {
         user_id: TelegramUserId,
         timestamp: i64,
     ) -> Result<(), Error> {
-        let chat_users = self
+        let users_timestamps = self
             .content
             .timestamps_by_chat_user
             .entry(chat_id)
             .or_insert_with(HashMap::new);
-        let timestamps = chat_users.entry(user_id).or_insert_with(Vec::new);
-        timestamps.push(timestamp);
+        users_timestamps
+            .entry(user_id)
+            .or_insert_with(Vec::new)
+            .push(timestamp);
+
+        if self.last_written.elapsed() > self.write_interval {
+            self.sync_file()?;
+            self.last_written = Instant::now();
+        }
+        Ok(())
+    }
+
+    pub fn add_keyword_point(
+        &mut self,
+        keyword: &str,
+        chat_id: TelegramChatId,
+        user_id: TelegramUserId,
+    ) -> Result<(), Error> {
+        let chat_users_scores = self
+            .content
+            .keyword_scores_by_keyword_chat_user
+            .entry(keyword.to_string())
+            .or_insert_with(HashMap::new);
+        let users_scores = chat_users_scores
+            .entry(chat_id)
+            .or_insert_with(HashMap::new);
+        *users_scores.entry(user_id).or_insert(0) += 1;
 
         if self.last_written.elapsed() > self.write_interval {
             self.sync_file()?;
@@ -100,13 +128,38 @@ impl MetadataStore {
     ) -> Vec<(TelegramUserId, usize)> {
         let mut result = Vec::new();
 
-        if let Some(user_timestamps) = self.content.timestamps_by_chat_user.get(&chat_id) {
-            result = user_timestamps
+        if let Some(users_timestamps) = self.content.timestamps_by_chat_user.get(&chat_id) {
+            result = users_timestamps
                 .iter()
                 .map(|(u, t)| (*u, t.iter().filter(|t| **t > after_unix).count()))
                 .filter(|(_, n)| *n > 0)
                 .collect();
             result.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        }
+
+        result
+    }
+
+    pub fn get_scores_by_user(
+        &self,
+        keyword: &str,
+        chat_id: TelegramChatId,
+    ) -> Vec<(TelegramUserId, u64)> {
+        let mut result: Vec<(TelegramUserId, u64)> = Vec::new();
+
+        if let Some(chat_users_scores) = self
+            .content
+            .keyword_scores_by_keyword_chat_user
+            .get(keyword)
+        {
+            if let Some(users_scores) = chat_users_scores.get(&chat_id) {
+                result = users_scores
+                    .iter()
+                    .map(|(u, s)| (*u, *s))
+                    .filter(|(_, s)| *s > 0)
+                    .collect();
+                result.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+            }
         }
 
         result

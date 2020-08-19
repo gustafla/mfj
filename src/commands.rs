@@ -1,3 +1,4 @@
+pub mod command_scores;
 pub mod command_stats;
 
 use crate::{MetadataStore, TelegramChatId};
