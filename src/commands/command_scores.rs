@@ -6,7 +6,7 @@ pub fn render(
     metadata_store: &mut MetadataStore,
 ) -> String {
     let mut response = Vec::new();
-    for word in command.split_whitespace() {
+    for word in command.split_whitespace().skip(1) {
         let user_scores = metadata_store.get_scores_by_user(command, chat_id);
         response.push(format!("Pisteet sanalle {}:\n\n", word));
 

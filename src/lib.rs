@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod metadata_store;
 
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder};
 use commands::CommandInvocation;
 use metadata_store::MetadataStore;
 use serde_json::json;
@@ -36,12 +37,15 @@ pub struct StatsBot {
     api_url_send_message: String,
     api_url_edit_message_text: String,
     metadata_store: MetadataStore,
+    keyword_finder: AhoCorasick,
     last_command_invocation_and_message_id_by_chat:
         HashMap<TelegramChatId, (CommandInvocation, TelegramMessageId)>,
     messages_after_last_post_by_chat: HashMap<TelegramChatId, usize>,
 }
 
 impl StatsBot {
+    const KEYWORDS: &'static [&'static str] = &["kesko"];
+
     pub fn new(api_url: &str, timeout: Duration, metadata_store: MetadataStore) -> Self {
         Self {
             timeout,
@@ -49,6 +53,9 @@ impl StatsBot {
             api_url_send_message: format!("{}/sendMessage", api_url),
             api_url_edit_message_text: format!("{}/editMessageText", api_url),
             metadata_store,
+            keyword_finder: AhoCorasickBuilder::new()
+                .ascii_case_insensitive(true)
+                .build(Self::KEYWORDS),
             last_command_invocation_and_message_id_by_chat: HashMap::new(),
             messages_after_last_post_by_chat: HashMap::new(),
         }
@@ -65,7 +72,11 @@ impl StatsBot {
         }));
 
         if response.error() {
-            return Err(Error::Request(response.status()));
+            if response.status() == 400 {
+                log::info!("Failed to send message {}", text);
+            } else {
+                return Err(Error::Request(response.status()));
+            }
         }
 
         let response = response.into_json()?;
@@ -165,6 +176,24 @@ impl StatsBot {
                                 continue 'update_loop; // Do not count bot commands
                             }
                         }
+                    }
+                }
+
+                // Check keywords
+                if let Some(text) = message["text"].as_str() {
+                    for mat in self.keyword_finder.find_iter(text) {
+                        self.metadata_store.add_keyword_point(
+                            Self::KEYWORDS[mat.pattern()],
+                            chat_id,
+                            user_id,
+                        )?;
+                        self.send_message(
+                            chat_id,
+                            &format!(
+                                "Yksi (1) {} lisätty {0}-tilillesi",
+                                Self::KEYWORDS[mat.pattern()]
+                            ),
+                        )?;
                     }
                 }
 

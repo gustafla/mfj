@@ -1,6 +1,6 @@
 [package]
 name = "mfj"
-version = "1.4.0"
+version = "1.5.0"
 authors = ["Lauri Gustafsson <me@gustafla.space>"]
 edition = "2018"
 
@@ -22,3 +22,4 @@ ureq = { version = "1.4.0", features = ["json"] }
 anyhow = "1.0.32"
 thiserror = "1.0.20"
 argh = "0.1.3"
+aho-corasick = "0.7.13"

@@ -22,8 +22,11 @@ type ChatUserMap<T> = HashMap<TelegramChatId, HashMap<TelegramUserId, T>>;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct MetadataContent {
+    #[serde(default)]
     timestamps_by_chat_user: ChatUserMap<Vec<i64>>,
+    #[serde(default)]
     keyword_scores_by_keyword_chat_user: HashMap<String, ChatUserMap<u64>>,
+    #[serde(default)]
     user_names: HashMap<TelegramUserId, String>,
 }
 
