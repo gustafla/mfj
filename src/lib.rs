@@ -22,7 +22,7 @@ pub enum Error {
     #[error("Failed to parse request body")]
     JsonConversion(#[from] io::Error),
     #[error("Request failed with {0}")]
-    Request(u16),
+    Request(#[from] ureq::Error),
     #[error("Failed to store message metadata")]
     MetadataStore(#[from] metadata_store::Error),
 }
@@ -71,21 +71,21 @@ impl StatsBot {
                 "text": text
         }));
 
-        if response.error() {
-            if response.status() == 400 {
-                log::info!("Failed to send message {}", text);
-            } else {
-                return Err(Error::Request(response.status()));
+        match response {
+            Ok(response) => {
+                let response: serde_json::Value = response.into_json()?;
+                Ok(response["result"]["message_id"]
+                    .as_i64()
+                    .unwrap()
+                    .try_into()
+                    .unwrap())
             }
+            Err(e @ ureq::Error::Status(400, _)) => {
+                log::info!("Failed to send message {}", text);
+                Err(e.into())
+            }
+            Err(e) => Err(e.into()),
         }
-
-        let response = response.into_json()?;
-
-        Ok(response["result"]["message_id"]
-            .as_i64()
-            .unwrap()
-            .try_into()
-            .unwrap())
     }
 
     fn update_message(
@@ -94,15 +94,11 @@ impl StatsBot {
         message_id: TelegramMessageId,
         text: &str,
     ) -> Result<(), Error> {
-        let response = ureq::post(&self.api_url_edit_message_text).send_json(json!({
+        ureq::post(&self.api_url_edit_message_text).send_json(json!({
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "text": text
-        }));
-
-        if response.error() {
-            return Err(Error::Request(response.status()));
-        }
+        }))?;
 
         Ok(())
     }
@@ -247,35 +243,41 @@ impl StatsBot {
                 .timeout(self.timeout + Duration::from_secs(10))
                 .send_json(params_get_updates.clone());
 
-            if response.error() {
-                log::info!("Update request error status: {}", response.status());
-                error_count += 1;
-                if error_count > 32 {
-                    log::error!("Too many consecutive errors, aborting");
-                    return Err(Error::Request(response.status()));
+            match response {
+                Ok(response) => {
+                    error_count = 0;
+
+                    let updates: serde_json::Value = response.into_json()?;
+                    if !updates["ok"].as_bool().unwrap() {
+                        panic!("Telegram getUpdates returned ok: false");
+                    }
+
+                    let updates: &Vec<serde_json::Value> = updates["result"].as_array().unwrap();
+
+                    if let Some(next_id) = updates
+                        .iter()
+                        .map(|v| v["update_id"].as_u64().unwrap())
+                        .max()
+                    {
+                        log::debug!("next_id = {}", next_id);
+                        params_get_updates["offset"] = json!(next_id + 1);
+                    }
+
+                    self.process_updates(updates)?;
                 }
-                continue;
+                Err(error) => {
+                    if let ureq::Error::Status(status, _) = error {
+                        log::info!("Update request error status: {}", status);
+                    }
+
+                    error_count += 1;
+                    if error_count > 32 {
+                        log::error!("Too many consecutive errors, aborting");
+                        return Err(error.into());
+                    }
+                    continue;
+                }
             }
-
-            error_count = 0;
-
-            let updates = response.into_json()?;
-            if !updates["ok"].as_bool().unwrap() {
-                panic!("Telegram getUpdates returned ok: false");
-            }
-
-            let updates: &Vec<serde_json::Value> = updates["result"].as_array().unwrap();
-
-            if let Some(next_id) = updates
-                .iter()
-                .map(|v| v["update_id"].as_u64().unwrap())
-                .max()
-            {
-                log::debug!("next_id = {}", next_id);
-                params_get_updates["offset"] = json!(next_id + 1);
-            }
-
-            self.process_updates(updates)?;
         }
 
         Ok(())

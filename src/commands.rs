@@ -5,8 +5,6 @@ use crate::{MetadataStore, TelegramChatId};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn convert_time(command: &str) -> Option<(i64, &str)> {
-    use std::convert::TryInto;
-
     if let Some(param) = command.split_whitespace().next() {
         let time_str = &command[param.len()..].trim();
         if let Ok(duration) = humantime::parse_duration(time_str) {
