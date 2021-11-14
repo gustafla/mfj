@@ -206,7 +206,7 @@ impl StatsBot {
 
                 // Update previous response with new invocation
                 log::debug!("messages_after_last_post_by_chat[{}] = {}", chat_id, count);
-                if count <= 100 {
+                if count <= 10 {
                     if let Some((invocation, message_id)) = self
                         .last_command_invocation_and_message_id_by_chat
                         .get(&chat_id)
@@ -219,7 +219,10 @@ impl StatsBot {
                         );
 
                         let text = invocation.run(&mut self.metadata_store);
-                        self.update_message(chat_id, *message_id, &text)?;
+                        if text.len() <= 4096 {
+                            self.update_message(chat_id, *message_id, &text)
+                                .unwrap_or_else(|e| log::error!("{}", e));
+                        }
                     }
                 }
             }
