@@ -87,11 +87,10 @@ fn main() -> Result<()> {
         // TODO cleanup this
         let metadata_store = find_dumps()?
             .iter()
-            .filter_map(|read_path| {
+            .find_map(|read_path| {
                 log::info!("Trying to load {}", read_path.display());
                 MetadataStore::new(Some(read_path), &default_filename, args.write_interval.0).ok()
             })
-            .next()
             .unwrap_or_else(|| {
                 log::info!("Failed to load backups, starting fresh");
                 MetadataStore::new(None::<&PathBuf>, &default_filename, args.write_interval.0)
