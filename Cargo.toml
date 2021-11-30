@@ -1,6 +1,6 @@
 [package]
 name = "mfj"
-version = "1.5.1"
+version = "1.5.2"
 authors = ["Lauri Gustafsson <me@gustafla.space>"]
 edition = "2021"
 
@@ -9,17 +9,17 @@ default = ["dotenv"]
 
 [dependencies]
 log = "0.4.14"
-simple_logger = { version = "1.13.0", default-features = false }
+simple_logger = { version = "1.15.0", default-features = false }
 lazy_static = "1.4.0"
 dotenv = { version = "0.15.0", optional = true }
 humantime = "2.1.0"
 chrono = "0.4.19"
 serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.70"
+serde_json = "1.0.72"
 ctrlc = "3.2.1"
 flate2 = "1.0.22"
-ureq = { version = "2.3.0", features = ["json"] }
-anyhow = "1.0.45"
+ureq = { version = "2.3.1", features = ["json"] }
+anyhow = "1.0.51"
 thiserror = "1.0.30"
 argh = "0.1.6"
 aho-corasick = "0.7.18"
