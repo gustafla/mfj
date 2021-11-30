@@ -158,8 +158,8 @@ impl MetadataStore {
             if let Some(users_scores) = chat_users_scores.get(&chat_id) {
                 result = users_scores
                     .iter()
+                    .filter(|(_, &s)| s > 0)
                     .map(|(u, s)| (*u, *s))
-                    .filter(|(_, s)| *s > 0)
                     .collect();
                 result.sort_unstable_by(|a, b| b.1.cmp(&a.1));
             }
