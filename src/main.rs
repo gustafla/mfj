@@ -64,9 +64,15 @@ fn main() -> Result<()> {
         }
     }
 
-    let var_token = match env::var("API_TOKEN") {
+    let var_token = match env::var("MFJ_API_TOKEN") {
         Ok(var) => Some(var),
         Err(env::VarError::NotPresent) => None,
+        Err(e) => return Err(e).context("Failed to read environment"),
+    };
+
+    let keywords = match env::var("MFJ_KEYWORDS") {
+        Ok(var) => var.split(',').map(String::from).collect(),
+        Err(env::VarError::NotPresent) => vec![String::from("kesko")],
         Err(e) => return Err(e).context("Failed to read environment"),
     };
 
@@ -116,6 +122,7 @@ fn main() -> Result<()> {
             &api_url,
             Duration::from_secs(args.poll_timeout),
             metadata_store,
+            keywords,
         )
         .poll(running)
         .with_context(|| {
