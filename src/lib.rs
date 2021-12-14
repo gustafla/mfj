@@ -184,18 +184,24 @@ impl StatsBot {
                 // Check keywords
                 if let Some(text) = message["text"].as_str() {
                     for mat in self.keyword_finder.find_iter(text) {
-                        self.metadata_store.add_keyword_point(
-                            &self.keywords[mat.pattern()],
-                            chat_id,
-                            user_id,
-                        )?;
-                        self.send_message(
-                            chat_id,
-                            &format!(
-                                "Yksi (1) {} lisätty {0}-tilillesi",
-                                self.keywords[mat.pattern()]
-                            ),
-                        )?;
+                        if mat.start() == 0
+                            || (&text[mat.start() - 1..][..1])
+                                .chars()
+                                .all(|c| c.is_whitespace())
+                        {
+                            self.metadata_store.add_keyword_point(
+                                &self.keywords[mat.pattern()],
+                                chat_id,
+                                user_id,
+                            )?;
+                            self.send_message(
+                                chat_id,
+                                &format!(
+                                    "Yksi (1) {} lisätty {0}-tilillesi",
+                                    self.keywords[mat.pattern()]
+                                ),
+                            )?;
+                        }
                     }
                 }
 
