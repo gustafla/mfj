@@ -184,10 +184,10 @@ impl StatsBot {
                 // Check keywords
                 if let Some(text) = message["text"].as_str() {
                     for mat in self.keyword_finder.find_iter(text) {
-                        if mat.start() == 0
-                            || (&text[mat.start() - 1..][..1])
-                                .chars()
-                                .all(|c| c.is_whitespace())
+                        if text[..mat.start()]
+                            .chars()
+                            .last()
+                            .map_or(true, |c| c.is_whitespace())
                         {
                             self.metadata_store.add_keyword_point(
                                 &self.keywords[mat.pattern()],
